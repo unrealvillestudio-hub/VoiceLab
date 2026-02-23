@@ -1,0 +1,5 @@
+{
+  "name": "UNRLVL - VoiceLab",
+  "description": "Professional voice synthesis and script management studio for brand content.",
+  "requestFramePermissions": ["microphone"]
+}
