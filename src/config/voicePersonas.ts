@@ -1,48 +1,66 @@
 import { VoicePersona } from '../core/types';
 
 export const VOICE_PERSONAS: Record<string, VoicePersona> = {
-  diamond_details: {
+  DiamondDetails: {
     id: 'vp_diamond',
     label: 'Diamond Details - Executive',
-    brandId: 'diamond_details',
+    brandId: 'DiamondDetails',
     language: 'es-ES',
-    voiceId: 'male_01',
+    voiceId: 'TBD_dd_voice_01',
     emotion: 'authoritative',
     speed: 1.0
   },
-  d7herbal: {
+  D7Herbal: {
     id: 'vp_d7herbal',
     label: 'D7Herbal - Natural',
-    brandId: 'd7herbal',
+    brandId: 'D7Herbal',
     language: 'es-ES',
-    voiceId: 'female_01',
+    voiceId: 'TBD_d7h_voice_01',
     emotion: 'warm',
     speed: 0.95
   },
-  vivose_mask: {
+  VivoseMask: {
     id: 'vp_vivose',
-    label: 'Vivosé - Zen',
-    brandId: 'vivose_mask',
+    label: 'Vivosé Mask - Zen',
+    brandId: 'VivoseMask',
     language: 'es-ES',
-    voiceId: 'female_02',
+    voiceId: 'TBD_vivose_voice_01',
     emotion: 'calm',
     speed: 0.9
   },
-  vizos_cosmetics: {
+  VizosCosmetics: {
     id: 'vp_vizos',
-    label: 'Vizos - Professional',
-    brandId: 'vizos_cosmetics',
+    label: 'Vizos Cosmetics - Professional',
+    brandId: 'VizosCosmetics',
     language: 'es-ES',
-    voiceId: 'female_03',
+    voiceId: 'TBD_vizos_voice_01',
     emotion: 'authoritative',
     speed: 1.0
   },
-  patricia_osorio: {
-    id: 'vp_patricia',
-    label: 'Patricia Osorio - Dynamic',
-    brandId: 'patricia_osorio',
+  PatriciaOsorioPersonal: {
+    id: 'vp_patricia_personal',
+    label: 'Patricia Osorio - Marca Personal',
+    brandId: 'PatriciaOsorioPersonal',
     language: 'es-FL',
-    voiceId: 'female_04',
+    voiceId: 'TBD_po_patricia',
+    emotion: 'energetic',
+    speed: 1.05
+  },
+  PatriciaOsorioComunidad: {
+    id: 'vp_patricia_comunidad',
+    label: 'Patricia Osorio - Conectando',
+    brandId: 'PatriciaOsorioComunidad',
+    language: 'es-FL',
+    voiceId: 'TBD_po_comunidad',
+    emotion: 'friendly',
+    speed: 1.0
+  },
+  PatriciaOsorioVizosSalon: {
+    id: 'vp_patricia_salon',
+    label: 'Patricia Osorio - Vizos Salón Miami',
+    brandId: 'PatriciaOsorioVizosSalon',
+    language: 'es-FL',
+    voiceId: 'TBD_po_patricia',
     emotion: 'energetic',
     speed: 1.05
   }
