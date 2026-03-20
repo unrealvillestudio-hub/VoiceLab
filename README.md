@@ -1,20 +1,54 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# VoiceLab — Unreal>ille Studio
 
-# Run and deploy your AI Studio app
+Generador de scripts de voz y audio del ecosistema Unreal>ille Studio.
 
-This contains everything you need to run your app locally.
+**Deploy:** Google AI Studio
+**Contexto completo del ecosistema:** [`CoreProject/CONTEXT.md`](https://github.com/unrealvillestudio-hub/CoreProject/blob/main/CONTEXT.md)
 
-View your app in AI Studio: https://ai.studio/apps/51aac45f-798d-49e0-b0a2-27dd9766ca78
+---
 
-## Run Locally
+## Rol en el ecosistema
 
-**Prerequisites:**  Node.js
+VoiceLab produce scripts optimizados para locución, podcast, reel con narración, y audio branding. Calibra el output contra los parámetros de voz definidos en BP_PERSON.
 
+```
+BluePrints (BP_PERSON.voice) ──→ VoiceLab (scripts de voz)
+                                        ↓
+                               Producción de audio / Reels
+```
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+**Pendiente:** Implementación de audio PO (requiere grabación de voz base para clonación).
+
+---
+
+## Stack
+
+- React 18 + TypeScript + Vite + Tailwind
+- AI: Gemini 2.0 Flash (Gemini API)
+- Deploy: Google AI Studio
+
+---
+
+## Dependencias
+
+| Consume | Provee |
+|---------|--------|
+| BP_PERSON (voice calibration) | Scripts de voz listos para locución |
+
+---
+
+## Changelog
+
+| Fecha | Cambio |
+|---|---|
+| 2026-03-20 | README actualizado con arquitectura de ecosistema |
+
+---
+
+## Desarrollo local
+
+```bash
+npm install
+cp .env.example .env.local  # añade GEMINI_API_KEY
+npm run dev
+```
