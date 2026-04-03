@@ -1,153 +1,230 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Mic, Play, Save, RefreshCw, Clock, Type, AlertCircle, CheckCircle2, ChevronRight, Users, User, ArrowRightLeft, Download } from 'lucide-react';
+import {
+  Mic, Play, Save, RefreshCw, Clock, Type, AlertCircle,
+  CheckCircle2, Users, User, ArrowRightLeft, Download, Zap
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { VOICE_PACKS } from '../../config/packs';
-import { VOICE_PERSONAS } from '../../config/voicePersonas';
-import { PERSON_BLUEPRINTS, getBlueprintsByBrand } from '../../config/personBlueprints';
-import { buildVoiceScript, estimateReadTime } from '../../services/voiceEngine';
+import { useVoiceLab } from '../../context/VoiceLabContext';
+import {
+  VoiceLabBrand,
+  VoicePersonaDB,
+  getPersonasByBrand,
+  getBlueprintsByBrandId,
+} from '../../services/voiceLabLoader';
+import {
+  generateVoiceScript,
+  estimateReadTime,
+  buildElevenLabsPayload,
+} from '../../services/voiceEngine';
 import { useSessionOutputsStore } from '../../store/useSessionOutputsStore';
-import { ScriptBlock, VoicePersona, BrandProfile, VoicePackSpec, AudioOutput } from '../../core/types';
-
-// Mock brands for selection
-const BRANDS: BrandProfile[] = [
-  { id: 'diamond_details', name: 'Diamond Details', industry: 'Automotive', tone: 'Executive' },
-  { id: 'd7herbal', name: 'D7Herbal', industry: 'Health', tone: 'Natural' },
-  { id: 'vivose_mask', name: 'Vivosé', industry: 'Beauty', tone: 'Zen' },
-  { id: 'vizos_cosmetics', name: 'Vizos', industry: 'Beauty', tone: 'Professional' },
-  { id: 'patricia_osorio', name: 'Patricia Osorio', industry: 'Personal Brand', tone: 'Dynamic' },
-];
+import { ScriptBlock, VoicePackSpec, AudioOutput } from '../../core/types';
 
 export default function ScriptModule() {
-  const pushOutput = useSessionOutputsStore(state => state.push);
-  
-  const [mode, setMode] = useState<'single' | 'podcast'>('single');
-  const [selectedBrandId, setSelectedBrandId] = useState(BRANDS[0].id);
-  const [selectedPackId, setSelectedPackId] = useState(Object.keys(VOICE_PACKS)[0]);
-  const [productContext, setProductContext] = useState('');
-  const [keywords, setKeywords] = useState('');
-  const [scriptBlocks, setScriptBlocks] = useState<ScriptBlock[]>([]);
-  const [isGenerating, setIsGenerating] = useState(false);
+  // --- SUPABASE DATA ---
+  const { brands, voicePersonas, personBlueprints, isLoading, source } = useVoiceLab();
 
-  // Podcast specific state
-  const [hostBlueprintId, setHostBlueprintId] = useState('');
-  const [guestBlueprintId, setGuestBlueprintId] = useState('');
+  // --- STATE ---
+  const [selectedBrand, setSelectedBrand] = useState<VoiceLabBrand | null>(null);
+  const [selectedPackId, setSelectedPackId] = useState<string>('');
+  const [mode, setMode] = useState<'single' | 'podcast'>('single');
+
+  const [hostPersonaId, setHostPersonaId] = useState<string>('');
+  const [guestPersonaId, setGuestPersonaId] = useState<string>('');
   const [swapRoles, setSwapRoles] = useState(false);
 
-  // Filter blueprints by brand
-  const brandBlueprints = useMemo(() => {
-    // Map brand IDs to the ones used in blueprints if they differ
-    const brandMap: Record<string, string> = {
-      'diamond_details': 'DiamondDetails',
-      'd7herbal': 'D7Herbal',
-      'vivose_mask': 'VivoséMask', // Note: Blueprint uses PatriciaOsorio or others
-      'vizos_cosmetics': 'VizosCosmetics',
-      'patricia_osorio': 'PatriciaOsorio'
-    };
-    const mappedBrandId = brandMap[selectedBrandId] || selectedBrandId;
-    return getBlueprintsByBrand(mappedBrandId);
-  }, [selectedBrandId]);
+  const [productContext, setProductContext] = useState('');
+  const [keywords, setKeywords] = useState('');
 
-  // Set default blueprints when brandBlueprints change
+  const [scriptBlocks, setScriptBlocks] = useState<ScriptBlock[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
+
+  const pushOutput = useSessionOutputsStore(state => state.push);
+
+  // --- INIT: first brand after load ---
   useEffect(() => {
-    if (brandBlueprints.length > 0) {
-      setHostBlueprintId(brandBlueprints[0].id);
-      setGuestBlueprintId(brandBlueprints[1]?.id || brandBlueprints[0].id);
+    if (brands.length > 0 && !selectedBrand) {
+      setSelectedBrand(brands[0]);
     }
-  }, [brandBlueprints]);
+  }, [brands]);
 
-  // Auto-load persona when brand changes (for single mode)
-  const currentPersona = useMemo(() => {
-    const brandId = selectedBrandId;
-    return Object.values(VOICE_PERSONAS).find(p => p.brandId === brandId) || VOICE_PERSONAS.diamond_details;
-  }, [selectedBrandId]);
+  // --- DERIVED: personas for selected brand ---
+  const brandPersonas = useMemo(() => {
+    if (!selectedBrand) return [];
+    return getPersonasByBrand(voicePersonas, selectedBrand.id);
+  }, [voicePersonas, selectedBrand?.id]);
 
-  // Filter packs based on mode
+  // --- DERIVED: blueprints for selected brand (podcast HOST/GUEST) ---
+  const brandBlueprints = useMemo(() => {
+    if (!selectedBrand) return [];
+    return getBlueprintsByBrandId(personBlueprints, selectedBrand.id);
+  }, [personBlueprints, selectedBrand?.id]);
+
+  // --- AUTO-SELECT persona when brand changes ---
+  useEffect(() => {
+    if (!selectedBrand) return;
+    // Reset script on brand change
+    setScriptBlocks([]);
+    setGenerateError(null);
+
+    if (brandPersonas.length > 0) {
+      setHostPersonaId(brandPersonas[0].id);
+      setGuestPersonaId(brandPersonas[1]?.id || brandPersonas[0].id);
+    } else {
+      setHostPersonaId('');
+      setGuestPersonaId('');
+    }
+  }, [selectedBrand?.id, brandPersonas]);
+
+  // --- FILTERED PACKS by mode ---
   const filteredPacks = useMemo(() => {
-    return Object.values(VOICE_PACKS).filter(pack => 
+    return Object.values(VOICE_PACKS).filter(pack =>
       mode === 'podcast' ? pack.packType === 'videopodcast' : pack.packType !== 'videopodcast'
     );
   }, [mode]);
 
-  // Update selected pack if it's not in the filtered list
+  // --- AUTO-SELECT pack when mode changes ---
   useEffect(() => {
     if (!filteredPacks.find(p => p.id === selectedPackId)) {
       setSelectedPackId(filteredPacks[0]?.id || '');
     }
-  }, [filteredPacks, selectedPackId]);
+  }, [filteredPacks]);
 
-  const currentPack = useMemo(() => VOICE_PACKS[selectedPackId] || filteredPacks[0], [selectedPackId, filteredPacks]);
+  const currentPack = useMemo(
+    () => VOICE_PACKS[selectedPackId] || filteredPacks[0],
+    [selectedPackId, filteredPacks]
+  );
 
-  // Handle generation
-  const handleGenerate = () => {
+  // The active host persona object
+  const hostPersona = useMemo(
+    () => brandPersonas.find(p => p.id === hostPersonaId) || brandPersonas[0] || null,
+    [brandPersonas, hostPersonaId]
+  );
+
+  const guestPersona = useMemo(
+    () => brandPersonas.find(p => p.id === guestPersonaId) || null,
+    [brandPersonas, guestPersonaId]
+  );
+
+  // --- METRICS ---
+  const totalWords = scriptBlocks.reduce(
+    (acc, b) => acc + (b.text.trim() ? b.text.trim().split(/\s+/).length : 0),
+    0
+  );
+  const totalDuration = scriptBlocks.reduce(
+    (acc, b) => acc + (b.estimated_seconds || 0),
+    0
+  );
+  const isCompliant = currentPack
+    ? totalDuration <= currentPack.total_estimated_seconds * 1.1
+    : true;
+
+  // --- HANDLERS ---
+  const handleBrandChange = (brandId: string) => {
+    const brand = brands.find(b => b.id === brandId);
+    if (brand) setSelectedBrand(brand);
+  };
+
+  const handleGenerate = async () => {
+    if (!selectedBrand || !hostPersona || !currentPack) return;
+
     setIsGenerating(true);
-    const brand = BRANDS.find(b => b.id === selectedBrandId)!;
-    const kwArray = keywords.split(',').map(k => k.trim()).filter(k => k);
-    
-    // In a real app, we'd use the selected blueprints to influence the persona
-    // For now, we use the currentPersona for single mode
-    const generatedBlocks = buildVoiceScript({
-      pack: currentPack,
-      brand,
-      persona: currentPersona,
-      productContext: productContext || 'Un producto revolucionario que cambia las reglas del juego.',
-      keywords: kwArray.length > 0 ? kwArray : ['calidad', 'innovación']
-    });
+    setGenerateError(null);
+    setScriptBlocks([]);
 
-    // If swapRoles is true, swap HOST/GUEST in blocks
-    const processedBlocks = swapRoles 
-      ? generatedBlocks.map(b => ({
-          ...b,
-          speaker: b.speaker === 'HOST' ? 'GUEST' : b.speaker === 'GUEST' ? 'HOST' : b.speaker
-        }))
-      : generatedBlocks;
+    try {
+      const kwArray = keywords.split(',').map(k => k.trim()).filter(k => k);
 
-    setScriptBlocks(processedBlocks);
-    setIsGenerating(false);
+      // If swapRoles, pass guest as host and vice versa
+      const effectiveHost = swapRoles ? (guestPersona || hostPersona) : hostPersona;
+      const effectiveGuest = swapRoles ? hostPersona : guestPersona;
+
+      const blocks = await generateVoiceScript({
+        mode,
+        brand: selectedBrand,
+        persona: effectiveHost,
+        ...(mode === 'podcast' && effectiveGuest ? { guestPersona: effectiveGuest } : {}),
+        pack: currentPack,
+        productContext: productContext || `${selectedBrand.displayName} — producto/servicio premium`,
+        keywords: kwArray.length > 0 ? kwArray : ['calidad', 'profesional'],
+      });
+
+      setScriptBlocks(blocks);
+    } catch (err: any) {
+      setGenerateError(err.message || 'Error generando script');
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const handleBlockChange = (id: string, text: string) => {
-    setScriptBlocks(prev => prev.map(block => 
-      block.id === id 
-        ? { ...block, text, estimated_seconds: estimateReadTime(text, currentPersona.speed) }
+    setScriptBlocks(prev => prev.map(block =>
+      block.id === id
+        ? { ...block, text, estimated_seconds: estimateReadTime(text, hostPersona?.speed || 1.0) }
         : block
     ));
   };
 
   const saveToSession = () => {
-    if (scriptBlocks.length === 0) return;
-    
+    if (scriptBlocks.length === 0 || !hostPersona || !selectedBrand) return;
+
     const output: AudioOutput = {
       id: crypto.randomUUID(),
-      label: `${currentPack.label} - ${BRANDS.find(b => b.id === selectedBrandId)?.name}`,
+      label: `${currentPack?.label || 'Script'} — ${selectedBrand.displayName}`,
       script: scriptBlocks,
-      voice: currentPersona,
+      voice: {
+        id: hostPersona.id,
+        label: hostPersona.personaName,
+        brandId: hostPersona.brandId,
+        language: hostPersona.language,
+        voiceId: hostPersona.voiceId,
+        emotion: hostPersona.emotionBase as any,
+        speed: hostPersona.speed as any,
+      },
       metadata: {
         generatedAt: new Date().toISOString(),
-        totalDuration: totalDuration,
-        mode
-      }
+        totalDuration,
+        mode,
+      },
     };
-    
     pushOutput(output);
   };
 
   const exportJson = () => {
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(scriptBlocks, null, 2));
-    const downloadAnchorNode = document.createElement('a');
-    downloadAnchorNode.setAttribute("href", dataStr);
-    downloadAnchorNode.setAttribute("download", `script_${selectedBrandId}_${selectedPackId}.json`);
-    document.body.appendChild(downloadAnchorNode);
-    downloadAnchorNode.click();
-    downloadAnchorNode.remove();
+    if (!selectedBrand) return;
+    const dataStr = 'data:text/json;charset=utf-8,' +
+      encodeURIComponent(JSON.stringify(scriptBlocks, null, 2));
+    const a = document.createElement('a');
+    a.setAttribute('href', dataStr);
+    a.setAttribute('download', `script_${selectedBrand.id}_${selectedPackId}.json`);
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
   };
 
-  // Metrics
-  const totalWords = scriptBlocks.reduce((acc, b) => acc + (b.text.trim() ? b.text.trim().split(/\s+/).length : 0), 0);
-  const totalDuration = scriptBlocks.reduce((acc, b) => acc + (b.estimated_seconds || 0), 0);
-  const isCompliant = currentPack ? totalDuration <= currentPack.total_estimated_seconds * 1.1 : true;
+  // ElevenLabs preview payload
+  const elevenLabsPayload = useMemo(() => {
+    if (scriptBlocks.length === 0 || !hostPersona || mode !== 'single') return null;
+    return buildElevenLabsPayload(scriptBlocks, hostPersona);
+  }, [scriptBlocks, hostPersona, mode]);
 
+  // --- LOADING ---
+  if (isLoading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="flex flex-col items-center gap-3 opacity-40">
+          <Mic size={36} strokeWidth={1} className="animate-pulse" />
+          <p className="text-xs font-mono uppercase tracking-widest">Loading voice data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // --- RENDER ---
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+
       {/* Configuration Panel */}
       <div className="lg:col-span-4 space-y-6">
         <div className="bg-zinc-900/50 border border-white/5 rounded-2xl p-6 space-y-6">
@@ -156,20 +233,34 @@ export default function ScriptModule() {
               <RefreshCw className="w-4 h-4 text-emerald-500" />
               Configuración
             </h3>
+            {/* DB source badge */}
+            {source && (
+              <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${
+                source === 'supabase'
+                  ? 'bg-green-950 text-green-500 border-green-900'
+                  : 'bg-yellow-950 text-yellow-600 border-yellow-900'
+              }`}>
+                {source === 'supabase' ? '● DB' : '● LOCAL'}
+              </span>
+            )}
           </div>
 
           {/* Mode Toggle */}
           <div className="flex p-1 bg-zinc-950 border border-white/5 rounded-xl">
-            <button 
+            <button
               onClick={() => setMode('single')}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${mode === 'single' ? 'bg-emerald-500 text-black shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${
+                mode === 'single' ? 'bg-emerald-500 text-black shadow-lg' : 'text-zinc-500 hover:text-zinc-300'
+              }`}
             >
               <User className="w-3 h-3" />
               Single Voice
             </button>
-            <button 
+            <button
               onClick={() => setMode('podcast')}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${mode === 'podcast' ? 'bg-emerald-500 text-black shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${
+                mode === 'podcast' ? 'bg-emerald-500 text-black shadow-lg' : 'text-zinc-500 hover:text-zinc-300'
+              }`}
             >
               <Users className="w-3 h-3" />
               VideoPodcast
@@ -177,61 +268,94 @@ export default function ScriptModule() {
           </div>
 
           <div className="space-y-4">
+            {/* Brand selector — uses canonical brand.id */}
             <div>
               <label className="block text-xs font-mono text-zinc-500 uppercase mb-2">Marca</label>
-              <select 
-                value={selectedBrandId}
-                onChange={(e) => setSelectedBrandId(e.target.value)}
+              <select
+                value={selectedBrand?.id || ''}
+                onChange={(e) => handleBrandChange(e.target.value)}
                 className="w-full bg-zinc-950 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
               >
-                {BRANDS.map(brand => (
-                  <option key={brand.id} value={brand.id}>{brand.name}</option>
+                {brands.map(b => (
+                  <option key={b.id} value={b.id}>{b.displayName}</option>
                 ))}
               </select>
             </div>
 
+            {/* Persona display */}
             {mode === 'single' ? (
-              <div className="p-3 bg-emerald-500/5 border border-emerald-500/10 rounded-lg flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                  <Mic className="w-5 h-5 text-emerald-500" />
-                </div>
-                <div>
-                  <p className="text-xs text-emerald-500 font-medium uppercase tracking-wider">Persona de Voz</p>
-                  <p className="text-sm font-medium">{currentPersona.label}</p>
-                  <p className="text-[10px] text-zinc-500">{currentPersona.emotion} • {currentPersona.speed}x speed</p>
-                </div>
+              <div>
+                <label className="block text-xs font-mono text-zinc-500 uppercase mb-2">Voz</label>
+                {brandPersonas.length === 0 ? (
+                  <p className="text-[10px] text-zinc-700 italic">
+                    Sin personas configuradas para esta marca.
+                  </p>
+                ) : (
+                  <>
+                    <select
+                      value={hostPersonaId}
+                      onChange={(e) => setHostPersonaId(e.target.value)}
+                      className="w-full bg-zinc-950 border border-white/10 rounded-lg px-3 py-2 text-sm mb-2 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    >
+                      {brandPersonas.map(p => (
+                        <option key={p.id} value={p.id}>{p.personaName}</option>
+                      ))}
+                    </select>
+                    {hostPersona && (
+                      <div className="p-3 bg-emerald-500/5 border border-emerald-500/10 rounded-lg flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
+                          <Mic className="w-5 h-5 text-emerald-500" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs text-emerald-500 font-medium uppercase tracking-wider">Persona de Voz</p>
+                          <p className="text-sm font-medium truncate">{hostPersona.personaName}</p>
+                          <p className="text-[10px] text-zinc-500">
+                            {hostPersona.emotionBase} • {hostPersona.speed}x • {hostPersona.language}
+                            {hostPersona.voiceId.startsWith('TBD') && (
+                              <span className="ml-2 text-amber-600">⚠ Voice ID pendiente</span>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             ) : (
               <div className="space-y-3">
                 <div className="grid grid-cols-1 gap-3">
                   <div className="p-3 bg-zinc-950 border border-white/5 rounded-xl">
                     <label className="block text-[10px] font-mono text-zinc-500 uppercase mb-1">Host (Persona A)</label>
-                    <select 
-                      value={hostBlueprintId}
-                      onChange={(e) => setHostBlueprintId(e.target.value)}
+                    <select
+                      value={hostPersonaId}
+                      onChange={(e) => setHostPersonaId(e.target.value)}
                       className="w-full bg-transparent text-sm focus:outline-none"
                     >
-                      {brandBlueprints.map(bp => (
-                        <option key={bp.id} value={bp.id}>{bp.displayName}</option>
+                      {brandPersonas.map(p => (
+                        <option key={p.id} value={p.id}>{p.personaName}</option>
                       ))}
                     </select>
                   </div>
                   <div className="p-3 bg-zinc-950 border border-white/5 rounded-xl">
                     <label className="block text-[10px] font-mono text-zinc-500 uppercase mb-1">Guest (Persona B)</label>
-                    <select 
-                      value={guestBlueprintId}
-                      onChange={(e) => setGuestBlueprintId(e.target.value)}
+                    <select
+                      value={guestPersonaId}
+                      onChange={(e) => setGuestPersonaId(e.target.value)}
                       className="w-full bg-transparent text-sm focus:outline-none"
                     >
-                      {brandBlueprints.map(bp => (
-                        <option key={bp.id} value={bp.id}>{bp.displayName}</option>
+                      {brandPersonas.map(p => (
+                        <option key={p.id} value={p.id}>{p.personaName}</option>
                       ))}
                     </select>
                   </div>
                 </div>
-                <button 
+                <button
                   onClick={() => setSwapRoles(!swapRoles)}
-                  className={`w-full flex items-center justify-center gap-2 py-2 text-[10px] font-bold uppercase tracking-wider border rounded-lg transition-all ${swapRoles ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-500' : 'border-white/5 text-zinc-500 hover:border-white/10'}`}
+                  className={`w-full flex items-center justify-center gap-2 py-2 text-[10px] font-bold uppercase tracking-wider border rounded-lg transition-all ${
+                    swapRoles
+                      ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-500'
+                      : 'border-white/5 text-zinc-500 hover:border-white/10'
+                  }`}
                 >
                   <ArrowRightLeft className="w-3 h-3" />
                   Intercambiar Roles
@@ -239,32 +363,37 @@ export default function ScriptModule() {
               </div>
             )}
 
+            {/* Pack selector */}
             <div>
               <label className="block text-xs font-mono text-zinc-500 uppercase mb-2">Pack de Voz</label>
-              <select 
+              <select
                 value={selectedPackId}
                 onChange={(e) => setSelectedPackId(e.target.value)}
                 className="w-full bg-zinc-950 border border-white/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-emerald-500"
               >
                 {filteredPacks.map(pack => (
-                  <option key={pack.id} value={pack.id}>{pack.label} ({pack.total_estimated_seconds}s)</option>
+                  <option key={pack.id} value={pack.id}>
+                    {pack.label} ({pack.total_estimated_seconds}s)
+                  </option>
                 ))}
               </select>
             </div>
 
+            {/* Product context */}
             <div>
               <label className="block text-xs font-mono text-zinc-500 uppercase mb-2">Contexto del Producto</label>
-              <textarea 
+              <textarea
                 value={productContext}
                 onChange={(e) => setProductContext(e.target.value)}
-                placeholder="Ej: Un nuevo serum facial con ácido hialurónico..."
+                placeholder="Ej: Un nuevo serum con ácido hialurónico para cabello dañado..."
                 className="w-full bg-zinc-950 border border-white/10 rounded-lg px-3 py-2 text-sm h-24 resize-none focus:outline-none focus:ring-1 focus:ring-emerald-500"
               />
             </div>
 
+            {/* Keywords */}
             <div>
               <label className="block text-xs font-mono text-zinc-500 uppercase mb-2">Keywords (separadas por coma)</label>
-              <input 
+              <input
                 type="text"
                 value={keywords}
                 onChange={(e) => setKeywords(e.target.value)}
@@ -273,18 +402,31 @@ export default function ScriptModule() {
               />
             </div>
 
-            <button 
+            {/* Error */}
+            {generateError && (
+              <div className="flex items-start gap-2 p-3 bg-red-500/5 border border-red-500/20 rounded-lg">
+                <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-red-400">{generateError}</p>
+              </div>
+            )}
+
+            {/* Generate button */}
+            <button
               onClick={handleGenerate}
-              disabled={isGenerating || !currentPack}
+              disabled={isGenerating || !currentPack || !hostPersona}
               className="w-full bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-black font-bold py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/10"
             >
-              {isGenerating ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Play className="w-5 h-5 fill-current" />}
-              Generar Script
+              {isGenerating ? (
+                <RefreshCw className="w-5 h-5 animate-spin" />
+              ) : (
+                <Zap className="w-5 h-5 fill-current" />
+              )}
+              {isGenerating ? 'Generando con Claude...' : 'Generar Script'}
             </button>
           </div>
         </div>
 
-        {/* Real-time Metrics */}
+        {/* Realtime Metrics */}
         <div className="bg-zinc-900/50 border border-white/5 rounded-2xl p-6 space-y-4">
           <h3 className="text-sm font-mono text-zinc-500 uppercase">Métricas en Tiempo Real</h3>
           <div className="grid grid-cols-2 gap-4">
@@ -305,8 +447,11 @@ export default function ScriptModule() {
               </p>
             </div>
           </div>
-          
-          <div className={`flex items-center gap-2 p-3 rounded-xl border ${isCompliant ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-500' : 'bg-amber-500/5 border-amber-500/20 text-amber-500'}`}>
+          <div className={`flex items-center gap-2 p-3 rounded-xl border ${
+            isCompliant
+              ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-500'
+              : 'bg-amber-500/5 border-amber-500/20 text-amber-500'
+          }`}>
             {isCompliant ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
             <span className="text-xs font-medium">
               {isCompliant ? 'Cumple con el tiempo objetivo' : 'Excede el tiempo del pack'}
@@ -329,14 +474,14 @@ export default function ScriptModule() {
           <div className="flex items-center gap-4">
             {scriptBlocks.length > 0 && (
               <>
-                <button 
+                <button
                   onClick={exportJson}
                   className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-zinc-400 hover:text-white transition-colors"
                 >
                   <Download className="w-4 h-4" />
                   Exportar JSON
                 </button>
-                <button 
+                <button
                   onClick={saveToSession}
                   className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-emerald-500 hover:text-emerald-400 transition-colors"
                 >
@@ -351,7 +496,7 @@ export default function ScriptModule() {
         <div className="space-y-4">
           <AnimatePresence mode="popLayout">
             {scriptBlocks.length === 0 ? (
-              <motion.div 
+              <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 className="h-96 border-2 border-dashed border-white/5 rounded-3xl flex flex-col items-center justify-center text-zinc-600 space-y-4"
@@ -367,18 +512,28 @@ export default function ScriptModule() {
                   key={block.id}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.05 }}
+                  transition={{ delay: index * 0.04 }}
                   className={`group relative bg-zinc-900 border rounded-2xl overflow-hidden transition-all ${
-                    block.speaker === 'HOST' ? 'border-emerald-500/20 focus-within:border-emerald-500/50' : 'border-white/5 focus-within:border-white/20'
+                    block.speaker === 'HOST'
+                      ? 'border-emerald-500/20 focus-within:border-emerald-500/50'
+                      : block.speaker === 'GUEST'
+                      ? 'border-blue-500/20 focus-within:border-blue-500/50'
+                      : 'border-white/5 focus-within:border-white/20'
                   }`}
                 >
                   <div className={`flex items-center justify-between px-4 py-2 border-b border-white/5 ${
-                    block.speaker === 'HOST' ? 'bg-emerald-500/10' : 'bg-zinc-950/50'
+                    block.speaker === 'HOST'
+                      ? 'bg-emerald-500/10'
+                      : block.speaker === 'GUEST'
+                      ? 'bg-blue-500/10'
+                      : 'bg-zinc-950/50'
                   }`}>
                     <div className="flex items-center gap-2">
                       {block.speaker && (
                         <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${
-                          block.speaker === 'HOST' ? 'bg-emerald-500 text-black' : 'bg-zinc-700 text-zinc-300'
+                          block.speaker === 'HOST'
+                            ? 'bg-emerald-500 text-black'
+                            : 'bg-blue-500 text-black'
                         }`}>
                           {block.speaker}
                         </span>
@@ -405,31 +560,27 @@ export default function ScriptModule() {
           </AnimatePresence>
         </div>
 
-        {/* Output Preview for ElevenLabs */}
-        {scriptBlocks.length > 0 && mode === 'single' && (
+        {/* ElevenLabs Payload Preview */}
+        {elevenLabsPayload && (
           <div className="mt-12 p-8 rounded-3xl bg-zinc-950 border border-white/5 space-y-6">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-mono text-zinc-500 uppercase">ElevenLabs Payload Preview</h3>
               <div className="flex items-center gap-2">
-                 <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                 <span className="text-[10px] font-bold text-emerald-500 uppercase">Ready for Synthesis</span>
+                {elevenLabsPayload.voice_id.startsWith('TBD') ? (
+                  <>
+                    <div className="w-2 h-2 rounded-full bg-amber-500" />
+                    <span className="text-[10px] font-bold text-amber-500 uppercase">Voice ID Pendiente</span>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="text-[10px] font-bold text-emerald-500 uppercase">Ready for Synthesis</span>
+                  </>
+                )}
               </div>
             </div>
-            
             <div className="bg-black/40 rounded-2xl p-6 font-mono text-xs text-zinc-400 overflow-x-auto">
-              <pre>
-{`{
-  "voice_id": "${currentPersona.voiceId}",
-  "model_id": "eleven_multilingual_v2",
-  "text": "${scriptBlocks.map(b => b.text).join(' ')}",
-  "voice_settings": {
-    "stability": 0.5,
-    "similarity_boost": 0.75,
-    "style": 0.06,
-    "use_speaker_boost": true
-  }
-}`}
-              </pre>
+              <pre>{JSON.stringify(elevenLabsPayload, null, 2)}</pre>
             </div>
           </div>
         )}
