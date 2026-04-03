@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 /**
  * voiceLabLoader.ts
  * Loads VoiceLab data from Supabase with automatic fallback to hardcoded config.
