@@ -116,6 +116,12 @@ export function voiceSettingsFrom(row: Record<string, any>): Record<string, numb
   return out;
 }
 
+/** Modelo efectivo de una voz: el propio de la voz si lo declara (voicelab_params.model_id), si no el del lab. */
+export function modelForVoice<T extends { model_id: string }>(vp: Record<string, any>, labModel: T): T {
+  const own = str(vp?.model_id);
+  return own ? { ...labModel, model_id: own, generation_params: {} } : labModel;
+}
+
 /** Límite de caracteres del modelo, si el dato lo declara (ops_lab_models.generation_params.max_chars). */
 export function scriptFits(script: string, generationParams: unknown): boolean {
   const max = isObj(generationParams) ? Number(generationParams.max_chars) : NaN;
@@ -302,7 +308,10 @@ async function runVoice(e: Env, r: VoiceRequest, jobId: string, t0: number) {
     ? 'voz de persona real sin consentimiento vigente' : 'la voz no declara si es clon o sintética');
 
   // 3 · Modelo, tarifa y límite por dato
-  const model = await activeModel(e, 'tts');
+  // Una voz puede declarar su propio modelo (voicelab_params.model_id): manda sobre el del lab.
+  // Es dato, y su tarifa se exige igual que la del modelo del lab (sin tarifa → RATE_NOT_CONFIGURED).
+  const labModel = await activeModel(e, 'tts');
+  const model = modelForVoice(vp, labModel);
   const rate = await activeRate(e, model.model_id, 'per_1k_chars');
   if (!scriptFits(r.script, model.generation_params)) throw new LabError(400, 'SCRIPT_TOO_LONG', `el guion excede el límite de ${model.model_id}`);
 
