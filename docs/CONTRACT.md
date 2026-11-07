@@ -25,7 +25,10 @@ VoiceLab es dueño de su motor (ElevenLabs hoy). Quien lo usa (el carril, VideoL
 
 - `stage.mode` (o `params.mode`): `voice` | `music`.
 - Responde **en la misma llamada** (`maxDuration` 300 s). Timeout recomendado al llamador: 120 s para `voice`,
-  290 s para `music`.
+  290 s para `music`. El carril ya espera hasta 290 s a CopyLab con `execLab` (`COPYLAB_TIMEOUT_MS`,
+  `content-run-stage/index.ts`).
+- **Desde el carril, la música se pide con `source: "bank"`**: rota una pista ya generada y responde en segundos.
+  `source: "generate"` (decenas de segundos) es para llenar el banco fuera del carril.
 - Cada llamada deja una fila en `public.lab_jobs` (`lab = 'voicelab'`, `parent_job_id` si viene) con el resultado en
   `output_parsed`. Consulta posterior: `GET {api_endpoint}/api/jobs/{job_id}` → la misma forma de §4.
 - `ledger_by_caller: true` sólo si el llamador asienta el costo; si no, asienta VoiceLab (§6). Nunca los dos.
@@ -34,7 +37,7 @@ VoiceLab es dueño de su motor (ElevenLabs hoy). Quien lo usa (el carril, VideoL
 
 | Campo | Tipo | Obligatorio | Nota |
 |---|---|---|---|
-| `script` | string | sí | texto final a locutar; VoiceLab no lo reescribe |
+| `script` | string | sí | texto final a locutar, **literal**: VoiceLab no lo reescribe ni lo recorta; si excede el límite del modelo, falla con `SCRIPT_TOO_LONG` |
 | `language` | string BCP-47 (`es-PA`, `en-US`, …) | sí | |
 | `person_id` | uuid de `person_blueprints` | uno de los dos | la voz se resuelve por `person_blueprints.voicelab_ref` → `voicelab_params` |
 | `voice_ref` | uuid de `voicelab_params` | uno de los dos | explícito; se valida contra la misma regla de consentimiento |
@@ -94,6 +97,8 @@ Cuerpo: `{ "success": false, "error_label": "…", "error": "detalle", "job_id":
 | HTTP | `error_label` | Cuándo | ¿Se llamó al proveedor? |
 |---|---|---|---|
 | 400 | `INVALID_REQUEST` | faltan campos o tipos inválidos | no |
+| 400 | `SCRIPT_TOO_LONG` | el guion excede el límite de caracteres del modelo activo | no |
+| 404 | `MUSIC_BANK_EMPTY` | `source: "bank"` sin pistas vigentes para el preset | no |
 | 403 | `VOICE_NOT_AUTHORIZED` | voz de persona real sin consentimiento vigente | no |
 | 404 | `VOICE_NOT_ASSIGNED` | la persona no tiene voz asignada | no |
 | 404 | `PRESET_NOT_FOUND` | no hay preset de música activo para la marca | no |
