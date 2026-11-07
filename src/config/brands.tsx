@@ -64,8 +64,8 @@ export const BRANDS: BrandProfile[] = [
     defaultNegativePrompt: "fake smiles, dark shadows, messy clutter"
   },
   {
-    id: "PatriciaOsorioComunidad",
-    displayName: "Patricia Osorio Conectando (Comunidad)",
+    id: "PatriciaOsorioConectando",
+    displayName: "Patricia Osorio · Conectando",
     industry: "community_networking",
     requiresProductLock: false,
     visualIdentity: "Vibrant social settings, coworking spaces, networking events context, dynamic energy.",

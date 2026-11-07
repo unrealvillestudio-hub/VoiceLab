@@ -90,7 +90,7 @@ export const PERSON_BLUEPRINTS: PersonBlueprint[] = [
   },
   {
     id: "po_patricia_comunidad",
-    brandId: "PatriciaOsorioComunidad",
+    brandId: "PatriciaOsorioConectando",
     displayName: "Patricia Osorio — Conectando",
     role_default: "BOTH",
     status: "active",
@@ -177,8 +177,8 @@ export const PERSON_BLUEPRINTS: PersonBlueprint[] = [
   },
   {
     id: "po_guest_comunidad",
-    brandId: "PatriciaOsorioComunidad",
-    displayName: "Guest — Invitado/a Comunidad",
+    brandId: "PatriciaOsorioConectando",
+    displayName: "Guest — Invitado/a Conectando",
     role_default: "GUEST",
     status: "active",
     imagelab: {

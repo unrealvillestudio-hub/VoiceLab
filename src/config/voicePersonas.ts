@@ -46,10 +46,10 @@ export const VOICE_PERSONAS: Record<string, VoicePersona> = {
     emotion: 'energetic',
     speed: 1.05
   },
-  PatriciaOsorioComunidad: {
+  PatriciaOsorioConectando: {
     id: 'vp_patricia_comunidad',
     label: 'Patricia Osorio - Conectando',
-    brandId: 'PatriciaOsorioComunidad',
+    brandId: 'PatriciaOsorioConectando',
     language: 'es-FL',
     voiceId: 'TBD_po_comunidad',
     emotion: 'friendly',
