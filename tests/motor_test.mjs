@@ -262,6 +262,19 @@ test('N+1: otra marca, otro idioma y otro modelo funcionan sólo con filas nueva
   assert.equal(r.json.storage_path, `voicelab/MarcaNueva/${U(90)}.mp3`);
 });
 
+
+test('una voz con modelo propio (voicelab_params.model_id) lo usa y exige su tarifa', async () => {
+  const w = world();
+  w.voicelab_params[2] = { ...w.voicelab_params[2], model_id: 'modelo-propio' };
+  let r = await call(voice({ script: 'hola', language: 'en', person_id: U(3) }, 'MarcaB'), { w });
+  assert.equal(r.json.error_label, 'RATE_NOT_CONFIGURED'); assert.equal(r.log.provider.length, 0);
+  w.ops_lab_rates.push({ id: U(34), lab: 'voicelab', model_id: 'modelo-propio', unit_type: 'per_1k_chars', rate_usd: 0.3, service_id: 'svc', status: 'vigente', active: true });
+  r = await call(voice({ script: 'hola', language: 'en', person_id: U(3) }, 'MarcaB'), { w });
+  assert.equal(r.status, 200, JSON.stringify(r.json)); assert.equal(r.log.provider[0].body.model_id, 'modelo-propio'); assert.equal(r.json.model_id, 'modelo-propio');
+  r = await call(voice({ script: 'hola', language: 'es', person_id: U(1) }));
+  assert.equal(r.log.provider[0].body.model_id, 'modelo-voz-dato');
+});
+
 // ── Puros ────────────────────────────────────────────────────────────────────────────────────────
 test('mp3DurationMs mide tramas y salta ID3', () => {
   assert.equal(M.mp3DurationMs(mp3(100)), 2612);
