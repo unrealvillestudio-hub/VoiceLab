@@ -113,7 +113,12 @@ async function call(body, { w = world(), providerStatus = 200 } = {}) {
       return new Response(JSON.stringify(r ? [{ rate_usd: r.rate_usd, rate_id: r.id, effective_from: '2026-11-07' }] : [{ rate_usd: null, rate_id: null, effective_from: null }]), { status: 200 });
     }
     if (table === 'ops_lab_rates') throw new Error('el motor no debe leer ops_lab_rates directamente (42501 en producción)');
-    if (table === 'rpc/ops_log_generation') { log.ledger.push(JSON.parse(init.body)); return new Response(JSON.stringify(U(99)), { status: 200 }); }
+    if (table === 'rpc/ops_log_generation') {
+      const b = JSON.parse(init.body);
+      // Los 11 parámetros sin defecto de la función real: si falta uno, PostgREST no la encuentra (PGRST202).
+      for (const k of ['p_lab','p_brand_id','p_job_id','p_piece_id','p_output_type','p_platform','p_provider','p_model_id','p_unit_type','p_input_units','p_output_units'])
+        if (!(k in b)) return new Response(JSON.stringify({ code: 'PGRST202', message: `falta ${k}` }), { status: 404 });
+      log.ledger.push(b); return new Response(JSON.stringify(U(99)), { status: 200 }); }
     if (table === 'lab_jobs' && method === 'POST') { log.jobs.push(JSON.parse(init.body)); return new Response(JSON.stringify([{ id: U(90) }]), { status: 201 }); }
     if (method === 'PATCH') { log.patches.push({ table, body: JSON.parse(init.body) }); return new Response(null, { status: 204 }); }
     if (method === 'POST') { log.patches.push({ table, body: JSON.parse(init.body) }); return new Response('', { status: 201 }); }
