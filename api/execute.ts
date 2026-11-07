@@ -256,8 +256,12 @@ async function ledger(e: Env, a: {
     const id = await db(e, 'rpc/ops_log_generation', {
       method: 'POST',
       body: JSON.stringify({
-        p_lab: LAB, p_brand_id: a.brandId, p_job_id: a.jobId, p_output_type: a.outputType, p_provider: 'elevenlabs',
-        p_model_id: a.modelId, p_unit_type: a.unitType, p_output_units: a.units,
+        // Los 11 primeros parámetros de ops_log_generation no tienen valor por defecto: PostgREST sólo
+        // encuentra la función si llegan TODOS por nombre (medido 2026-11-07: sin p_piece_id, p_platform
+        // y p_input_units el asiento no se escribía). Van explícitos aunque sean nulos.
+        p_lab: LAB, p_brand_id: a.brandId, p_job_id: a.jobId, p_piece_id: null, p_output_type: a.outputType,
+        p_platform: null, p_provider: 'elevenlabs', p_model_id: a.modelId, p_unit_type: a.unitType,
+        p_input_units: null, p_output_units: a.units,
         p_status: a.status, p_duration_ms: a.durationMs, p_voice_id: a.voiceId ?? null, p_source_app: LAB,
         p_error_msg: a.errorMsg ?? null, p_rate_source: a.rateSource ?? null,
       }),
