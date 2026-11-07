@@ -107,6 +107,12 @@ async function call(body, { w = world(), providerStatus = 200 } = {}) {
     const [, table, qs] = m;
     const params = new URLSearchParams(qs);
     const method = init.method ?? 'GET';
+    if (table === 'rpc/ops_resolve_rate') {
+      const a = JSON.parse(init.body);
+      const r = (w.ops_lab_rates ?? []).find(x => x.lab === a.p_lab && x.model_id === a.p_model_id && x.unit_type === a.p_unit_type && x.status === 'vigente' && x.active !== false);
+      return new Response(JSON.stringify(r ? [{ rate_usd: r.rate_usd, rate_id: r.id, effective_from: '2026-11-07' }] : [{ rate_usd: null, rate_id: null, effective_from: null }]), { status: 200 });
+    }
+    if (table === 'ops_lab_rates') throw new Error('el motor no debe leer ops_lab_rates directamente (42501 en producción)');
     if (table === 'rpc/ops_log_generation') { log.ledger.push(JSON.parse(init.body)); return new Response(JSON.stringify(U(99)), { status: 200 }); }
     if (table === 'lab_jobs' && method === 'POST') { log.jobs.push(JSON.parse(init.body)); return new Response(JSON.stringify([{ id: U(90) }]), { status: 201 }); }
     if (method === 'PATCH') { log.patches.push({ table, body: JSON.parse(init.body) }); return new Response(null, { status: 204 }); }

@@ -225,11 +225,17 @@ async function activeModel(e: Env, role: string) {
   return rows[0] as { model_id: string; provider: string; generation_params: any };
 }
 
+// La tarifa se lee con public.ops_resolve_rate (SECURITY DEFINER, ejecutable por service_role): la tabla
+// ops_lab_rates no se abre a la llave de servicio (medido 2026-11-07: 42501 permission denied). Es la misma
+// vía por la que el libro resuelve el precio, así que el costo que devuelve el lab y el del asiento coinciden.
 async function activeRate(e: Env, modelId: string, unitType: string) {
   const today = new Date().toISOString().slice(0, 10);
-  const rows = await db(e, `ops_lab_rates?lab=eq.${LAB}&model_id=eq.${q(modelId)}&unit_type=eq.${q(unitType)}&status=eq.vigente&active=is.true&effective_from=lte.${today}&select=id,rate_usd,unit_type,service_id&order=effective_from.desc&limit=1`);
-  if (!rows?.length) throw new LabError(422, 'RATE_NOT_CONFIGURED', `no hay tarifa vigente para ${modelId} (${unitType})`);
-  return { id: rows[0].id as string, rate: Number(rows[0].rate_usd), unitType, serviceId: rows[0].service_id as string };
+  const rows = await db(e, 'rpc/ops_resolve_rate', {
+    method: 'POST', body: JSON.stringify({ p_lab: LAB, p_model_id: modelId, p_unit_type: unitType, p_at: today }),
+  });
+  const row = Array.isArray(rows) ? rows[0] : rows;
+  if (!row || row.rate_id == null || row.rate_usd == null) throw new LabError(422, 'RATE_NOT_CONFIGURED', `no hay tarifa vigente para ${modelId} (${unitType})`);
+  return { id: String(row.rate_id), rate: Number(row.rate_usd), unitType };
 }
 
 async function upload(e: Env, path: string, bytes: Uint8Array, mime: string) {
@@ -244,14 +250,14 @@ async function upload(e: Env, path: string, bytes: Uint8Array, mime: string) {
 
 async function ledger(e: Env, a: {
   brandId: string; jobId: string; outputType: string; modelId: string; unitType: string; units: number;
-  serviceId: string; status: string; durationMs: number; voiceId?: string | null; errorMsg?: string | null; rateSource?: string | null;
+  status: string; durationMs: number; voiceId?: string | null; errorMsg?: string | null; rateSource?: string | null;
 }): Promise<string | null> {
   try {
     const id = await db(e, 'rpc/ops_log_generation', {
       method: 'POST',
       body: JSON.stringify({
         p_lab: LAB, p_brand_id: a.brandId, p_job_id: a.jobId, p_output_type: a.outputType, p_provider: 'elevenlabs',
-        p_model_id: a.modelId, p_unit_type: a.unitType, p_output_units: a.units, p_service_id: a.serviceId,
+        p_model_id: a.modelId, p_unit_type: a.unitType, p_output_units: a.units,
         p_status: a.status, p_duration_ms: a.durationMs, p_voice_id: a.voiceId ?? null, p_source_app: LAB,
         p_error_msg: a.errorMsg ?? null, p_rate_source: a.rateSource ?? null,
       }),
@@ -328,7 +334,7 @@ async function runVoice(e: Env, r: VoiceRequest, jobId: string, t0: number) {
   } catch (err) {
     if (err instanceof LabError && err.providerCalled && !r.ledgerByCaller) {
       await ledger(e, { brandId: r.brandId, jobId, outputType: 'voice', modelId: model.model_id, unitType: rate.unitType, units: 0,
-        serviceId: rate.serviceId, status: 'error', durationMs: Date.now() - t0, voiceId: vp.voice_id, errorMsg: err.message,
+        status: 'error', durationMs: Date.now() - t0, voiceId: vp.voice_id, errorMsg: err.message,
         rateSource: `NOT_BILLED:${err.label}` });
     }
     throw err;
@@ -344,7 +350,7 @@ async function runVoice(e: Env, r: VoiceRequest, jobId: string, t0: number) {
   const units = ledgerUnits(rate.unitType, r.script.length, 0);
   const ledgerId = r.ledgerByCaller ? null : await ledger(e, {
     brandId: r.brandId, jobId, outputType: 'voice', modelId: model.model_id, unitType: rate.unitType, units,
-    serviceId: rate.serviceId, status: 'success', durationMs: Date.now() - t0, voiceId: vp.voice_id,
+    status: 'success', durationMs: Date.now() - t0, voiceId: vp.voice_id,
   });
   return {
     success: true, job_id: jobId, mode: 'voice', audio_url: audioUrl, storage_path: path, format: fmt,
@@ -388,7 +394,7 @@ async function runMusic(e: Env, r: MusicRequest, jobId: string, t0: number) {
   } catch (err) {
     if (err instanceof LabError && err.providerCalled && !r.ledgerByCaller) {
       await ledger(e, { brandId: r.brandId, jobId, outputType: 'music', modelId: model.model_id, unitType: rate.unitType, units: 0,
-        serviceId: rate.serviceId, status: 'error', durationMs: Date.now() - t0, errorMsg: err.message, rateSource: `NOT_BILLED:${err.label}` });
+        status: 'error', durationMs: Date.now() - t0, errorMsg: err.message, rateSource: `NOT_BILLED:${err.label}` });
     }
     throw err;
   }
@@ -403,7 +409,7 @@ async function runMusic(e: Env, r: MusicRequest, jobId: string, t0: number) {
   const units = ledgerUnits(rate.unitType, 0, durationMs / 1000);
   const ledgerId = r.ledgerByCaller ? null : await ledger(e, {
     brandId: r.brandId, jobId, outputType: 'music', modelId: model.model_id, unitType: rate.unitType, units,
-    serviceId: rate.serviceId, status: 'success', durationMs: Date.now() - t0,
+    status: 'success', durationMs: Date.now() - t0,
   });
   return {
     success: true, job_id: jobId, mode: 'music', audio_url: audioUrl, storage_path: path, format: DEFAULT_FORMAT,
