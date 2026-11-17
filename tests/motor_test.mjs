@@ -295,6 +295,37 @@ test('mp3DurationMs mide tramas y salta ID3', () => {
   assert.equal(M.mp3DurationMs(new Uint8Array(50)), null);
 });
 
+// ── Modo `sound` (F1 de sonido, 2026-11-17): la librería propia, sin proveedor y sin costo ──────────
+const LIB = [
+  { sound_key: 'sfx_digit_tick', fn: 'digit_land', storage_path: 'voicelab/sound-library/v2/sfx_digit_tick.wav', sha256: 'a'.repeat(64), duration_ms: 50, loudness_lufs: null, license: 'propia', attribution: null, brand_id: null, active: true },
+  { sound_key: 'bed_soft_pulse', fn: 'music_bed', storage_path: 'voicelab/sound-library/v2/bed_soft_pulse.wav', sha256: 'b'.repeat(64), duration_ms: 9600, loudness_lufs: -18.8, license: 'propia', attribution: null, brand_id: null, active: true },
+  { sound_key: 'bed_soft_pulse', fn: 'music_bed', storage_path: 'voicelab/sound-library/v2/MarcaA/bed_soft_pulse.wav', sha256: 'c'.repeat(64), duration_ms: 9600, loudness_lufs: -19, license: 'propia', attribution: null, brand_id: 'MarcaA', active: true },
+  { sound_key: 'sfx_cta_chime', fn: 'cta', storage_path: 'x', sha256: 'd'.repeat(64), duration_ms: 1600, license: 'propia', brand_id: 'MarcaB', active: true },
+];
+const sound = (sounds, brandId = 'MarcaA') => ({ brandId, stage: { mode: 'sound' }, params: { sounds } });
+test('sound: devuelve URL, huella y licencia de cada clave, sin llamar al proveedor ni asentar costo', async () => {
+  const r = await call(sound(['sfx_digit_tick', 'bed_soft_pulse']), { w: world({ voicelab_sound_library: LIB }) });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.equal(r.json.mode, 'sound'); assert.equal(r.json.cost_usd, 0);
+  assert.deepEqual(r.json.sounds.map(x => x.key), ['sfx_digit_tick', 'bed_soft_pulse']);
+  assert.equal(r.json.sounds[0].sha256, 'a'.repeat(64));
+  assert.match(r.json.sounds[0].url, /\/storage\/v1\/object\/public\/unrlvl-media\/voicelab\/sound-library\/v2\/sfx_digit_tick\.wav$/);
+  assert.equal(r.json.sounds[0].license, 'propia');
+  assert.equal(r.log.provider.length, 0); assert.equal(r.log.ledger.length, 0);
+});
+test('sound: la fila de la marca gana a la de sistema; la de otra marca no se ve', async () => {
+  const r = await call(sound(['bed_soft_pulse']), { w: world({ voicelab_sound_library: LIB }) });
+  assert.equal(r.json.sounds[0].sha256, 'c'.repeat(64));
+  const r2 = await call(sound(['sfx_cta_chime']), { w: world({ voicelab_sound_library: LIB }) });
+  assert.equal(r2.status, 422); assert.equal(r2.json.error_label, 'SOUND_NOT_FOUND');
+});
+test('sound: falta una clave → 422 con su nombre; clave mal formada o lista vacía → 400', async () => {
+  const r = await call(sound(['sfx_digit_tick', 'sfx_no_existe']), { w: world({ voicelab_sound_library: LIB }) });
+  assert.equal(r.status, 422); assert.match(r.json.error, /sfx_no_existe/);
+  assert.equal((await call(sound(['DROP TABLE']))).status, 400);
+  assert.equal((await call(sound([]))).status, 400);
+});
+
 let ok = 0;
 for (const [n, f] of casos) {
   try { await f(); console.log('  ok ', n); ok++; }

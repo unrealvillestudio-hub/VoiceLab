@@ -40,6 +40,12 @@ caso('claves por función (sfx_ o bed_), funciones conocidas y sin marcas', () =
     assert.ok(!marcas.test(readFileSync(join(ROOT, f), 'utf8').replace(/\/\/.*$/gm, '')), `${f} nombra una marca`);
   }
 });
+caso('librería v2: 25 sonidos, cada función con variantes y 6 camas en bucle', () => {
+  assert.equal(LIBRARY.length, 25);
+  const por = LIBRARY.reduce((m, s) => ({ ...m, [s.fn]: (m[s.fn] ?? 0) + 1 }), {});
+  for (const fn of ['block_entry', 'digit_land', 'impact', 'shot_cut', 'cta', 'word_pop']) assert.ok(por[fn] >= 2, `${fn}: ${por[fn]}`);
+  assert.equal(por.music_bed, 6);
+});
 caso('la librería no descarga nada: ni fetch ni URLs en las recetas', () => {
   for (const f of ['sound/synth.mjs', 'sound/library.mjs']) assert.ok(!/fetch\(|https?:\/\//.test(readFileSync(join(ROOT, f), 'utf8').replace(/\/\/.*$/gm, '')), f);
 });

@@ -1,4 +1,8 @@
-# VoiceLab — contrato del lab (v1, 2026-11-07)
+# VoiceLab — contrato del lab (v1.1, 2026-11-17; base v1 del 2026-11-07)
+
+> **v1.1 (2026-11-17).** Modo nuevo `sound` (§3 bis): la **librería propia de sonidos** (efectos y camas sintetizados por
+> código, licencia `propia`, sin regalías). VoiceLab es dueño de la librería y VideoLab la consume (reparto validado por
+> Sam el 2026-11-17). Compatible hacia atrás: `voice` y `music` no cambian.
 
 **Estado:** borrador, PR 1 del lanzamiento. Decisiones de Sam del 2026-11-07: llamada **síncrona** con registro del job,
 audio en `unrlvl-media` bajo `voicelab/`, una sola tabla de consentimiento `person_consents`, modelo y tarifa como dato.
@@ -64,6 +68,29 @@ El audio de voz sale **siempre limpio, sin música**: sirve tal cual para avatar
 | `source` | `bank` \| `generate` | no | por defecto `bank`: rota una pista del banco de la marca; `generate` crea una nueva y la añade al banco |
 | `instrumental` | boolean | no | por defecto `true` |
 
+## 3 bis. `mode: "sound"` (v1.1)
+
+```json
+{ "brandId": "<marca>", "stage": { "mode": "sound" }, "params": { "sounds": ["sfx_digit_tick", "bed_soft_pulse"] } }
+```
+
+- `params.sounds`: de 1 a 40 claves de la librería (`^(sfx|bed)_[a-z0-9_]+$`).
+- Lee `public.voicelab_sound_library`, sólo las filas activas. Si una marca tiene su propia fila con la misma clave, gana
+  sobre la de sistema (`brand_id` NULL); la fila de otra marca no se ve.
+- **Sin proveedor y sin costo**: `cost_usd: 0`, sin asiento en el ledger.
+- Respuesta:
+
+```json
+{ "success": true, "job_id": "uuid", "mode": "sound", "cost_usd": 0, "ledger_id": null,
+  "sounds": [{ "key": "sfx_digit_tick", "fn": "digit_land", "url": "https://…/voicelab/sound-library/v2/sfx_digit_tick.wav",
+               "storage_path": "…", "sha256": "…", "duration_ms": 50, "loudness_lufs": null, "license": "propia", "attribution": null }] }
+```
+
+Quien mezcla (VideoLab) descarga cada `url` y **verifica el `sha256` antes de usarlo**.
+
+La librería se genera con `node sound/build.mjs <carpeta>` (recetas en `sound/library.mjs`). Cada versión de las recetas
+vive en su propia ruta (`voicelab/sound-library/v<n>/`), así que un archivo publicado nunca cambia.
+
 ## 4. Respuesta (`200`)
 
 ```json
@@ -102,6 +129,7 @@ Cuerpo: `{ "success": false, "error_label": "…", "error": "detalle", "job_id":
 | 403 | `VOICE_NOT_AUTHORIZED` | voz de persona real sin consentimiento vigente | no |
 | 404 | `VOICE_NOT_ASSIGNED` | la persona no tiene voz asignada | no |
 | 404 | `PRESET_NOT_FOUND` | no hay preset de música activo para la marca | no |
+| 422 | `SOUND_NOT_FOUND` | (`sound`) alguna clave pedida no está en la librería activa; el detalle las nombra | no |
 | 422 | `MODEL_NOT_CONFIGURED` | falta la fila activa en `ops_lab_models` | no |
 | 422 | `RATE_NOT_CONFIGURED` | falta la tarifa vigente en `ops_lab_rates` | no |
 | 402 | `PROVIDER_QUOTA` | el proveedor rechaza por créditos | sí (asiento `NOT_BILLED`) |
@@ -116,5 +144,5 @@ Cada llamada al proveedor se asienta en `public.ops_generation_ledger` (`lab = '
 ## 7. Lo que no hace
 
 - No escribe guiones (eso es CopyLab).
-- No mezcla voz y música (eso es VideoLab).
+- No mezcla voz, música ni efectos, ni decide en qué fotograma suena cada efecto: eso es VideoLab.
 - No publica (eso es SocialLab).

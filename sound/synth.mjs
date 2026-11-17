@@ -81,3 +81,48 @@ export function wav(left, right = left) {
   h.writeUInt32LE(RATE * 4, 28); h.writeUInt16LE(4, 32); h.writeUInt16LE(16, 34); h.write('data', 36); h.writeUInt32LE(data.length, 40);
   return Buffer.concat([h, data]);
 }
+
+/**
+ * Cuerda pulsada (Karplus-Strong): una ráfaga de ruido con semilla que recorre una línea de retardo con un filtro
+ * promediador. Da timbres de guitarra, arpa o marimba según `damp` (0–1, cuánto se apaga cada vuelta) y `bright`
+ * (0–1, cuánto brillo conserva). Determinista: mismo `seed`, misma cuerda. Devuelve muestras mono de `seconds` s.
+ */
+export function pluck(freq, seconds, { seed = 1, damp = 0.996, bright = 0.5 } = {}) {
+  const out = buffer(seconds);
+  const n = Math.max(2, Math.round(RATE / freq));
+  const line = new Float64Array(n), rnd = seeded(seed);
+  // Excitación suavizada: el ruido inicial pasa por un paso bajo de un polo (más suave cuanto menos brillo). Sin esto, el
+  // ataque es un chasquido de banda completa (medido en los espectrogramas de la F1).
+  const c = 0.35 + 0.6 * (1 - bright);
+  let lp = 0;
+  for (let pass = 0; pass < 2; pass++) for (let i = 0; i < n; i++) { lp = c * lp + (1 - c) * (pass ? line[i] : rnd() * 2 - 1); line[i] = lp; }
+  let mx = 0; for (let i = 0; i < n; i++) mx = Math.max(mx, Math.abs(line[i]));
+  for (let i = 0; i < n; i++) line[i] /= mx || 1;
+  let prev = 0, k = 0;
+  for (let i = 0; i < out.length; i++) {
+    const cur = line[k];
+    const avg = bright * cur + (1 - bright) * 0.5 * (cur + prev);
+    line[k] = avg * damp;
+    prev = cur;
+    out[i] = cur;
+    k = (k + 1) % n;
+  }
+  return out;
+}
+
+/** Suma `src` dentro de `dst` desde la muestra `at`, con ganancia `g` (lo que se pasa del final se descarta). */
+export function mixInto(dst, src, at, g = 1) {
+  for (let i = 0; i < src.length && at + i < dst.length; i++) if (at + i >= 0) dst[at + i] += src[i] * g;
+  return dst;
+}
+
+/**
+ * Bucle sin costura: se renderiza `loop + tail` segundos y la cola (lo que suena después del final del bucle) se
+ * pliega sobre el principio. Al repetir el archivo, las notas que cruzan el corte siguen sonando en vez de cortarse.
+ */
+export function foldLoop(buf, loopSeconds) {
+  const n = Math.round(loopSeconds * RATE);
+  const out = buf.slice(0, n);
+  for (let i = n; i < buf.length; i++) out[(i - n) % n] += buf[i];
+  return out;
+}
