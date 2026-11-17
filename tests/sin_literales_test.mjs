@@ -8,7 +8,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-const ARCHIVOS = ['api/execute.ts', 'api/jobs/[id].ts'];
+const ARCHIVOS = ['api/execute.ts', 'api/jobs/[id].ts', 'api/sound-library.ts'];
 const sinComentarios = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 
 const PROHIBIDOS = [
