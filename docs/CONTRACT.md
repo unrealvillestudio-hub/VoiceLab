@@ -1,4 +1,8 @@
-# VoiceLab — contrato del lab (v1.1, 2026-11-17; base v1 del 2026-11-07)
+# VoiceLab — contrato del lab (v1.2, 2026-11-17; base v1 del 2026-11-07)
+
+> **v1.2 (2026-11-17).** Lectura nueva `GET /api/sound-library` (§3 ter): la librería completa que ve una marca, para la
+> ventana de Controles de Sonido («acceso a librería», decisión de Sam del 2026-11-17). Sólo lectura, sin costo.
+> Compatible hacia atrás: los modos de `/api/execute` no cambian.
 
 > **v1.1 (2026-11-17).** Modo nuevo `sound` (§3 bis): la **librería propia de sonidos** (efectos y camas sintetizados por
 > código, licencia `propia`, sin regalías). VoiceLab es dueño de la librería y VideoLab la consume (reparto validado por
@@ -90,6 +94,25 @@ Quien mezcla (VideoLab) descarga cada `url` y **verifica el `sha256` antes de us
 
 La librería se genera con `node sound/build.mjs <carpeta>` (recetas en `sound/library.mjs`). Cada versión de las recetas
 vive en su propia ruta (`voicelab/sound-library/v<n>/`), así que un archivo publicado nunca cambia.
+
+## 3 ter. `GET /api/sound-library` (v1.2)
+
+La librería que ve una marca, para escuchar y elegir. La pide la ventana de Controles de Sonido (Orchestrator) por el
+`api_endpoint` de VoiceLab. No crea jobs, no llama al proveedor y no tiene costo.
+
+```
+GET /api/sound-library?brandId=<marca>[&fn=<función>]
+→ 200 { "status": "ok", "brandId": "…", "fn": null,
+        "sounds": [{ "sound_key": "sfx_digit_tick", "fn": "digit_land", "description": "…", "duration_ms": 50,
+                     "loudness_lufs": null, "license": "propia", "attribution": null,
+                     "url": "https://…/unrlvl-media/voicelab/sound-library/v2/sfx_digit_tick.wav", "sha256": "…", "brand_id": null }] }
+```
+
+- **Qué lista:** los sonidos activos de sistema más los de la marca; la fila de la marca gana sobre la de sistema con la
+  misma clave, y la de otra marca no se ve. Orden: función y luego clave.
+- **`fn`** (opcional): `block_entry`, `digit_land`, `impact`, `shot_cut`, `cta`, `word_pop` o `music_bed`. Los sonidos de
+  fondo son los `music_bed`; los efectos, el resto.
+- **Errores:** `400 INVALID_REQUEST` (falta `brandId` o `fn` desconocida), `405` si no es GET, `502 DB_ERROR`.
 
 ## 4. Respuesta (`200`)
 
