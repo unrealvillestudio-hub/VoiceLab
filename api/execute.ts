@@ -24,7 +24,10 @@ export const STORAGE_PREFIX = 'voicelab';
 export const DEFAULT_FORMAT = 'mp3_44100_128';
 export const MUSIC_MAX_SECONDS = 300;
 
-export type Mode = 'voice' | 'music';
+export type Mode = 'voice' | 'music' | 'sound';
+
+/** Modo `sound` (F1 de sonido, 2026-11-17): hasta cuántos sonidos de la librería propia se piden en una llamada. */
+export const SOUND_MAX_KEYS = 40;
 
 export class LabError extends Error {
   status: number; label: string; providerCalled: boolean;
@@ -49,7 +52,11 @@ export interface MusicRequest {
   source: 'bank' | 'generate'; instrumental: boolean; format: string | null;
   parentJobId: string | null; ledgerByCaller: boolean;
 }
-export type ParsedRequest = VoiceRequest | MusicRequest;
+/** Modo `sound`: devuelve de la librería propia (`voicelab_sound_library`) los sonidos pedidos, con URL y huella. */
+export interface SoundRequest {
+  mode: 'sound'; brandId: string; sounds: string[]; parentJobId: string | null; ledgerByCaller: boolean;
+}
+export type ParsedRequest = VoiceRequest | MusicRequest | SoundRequest;
 
 /** Valida el cuerpo del contrato §1–§3. Lanza LabError 400 INVALID_REQUEST; nunca llama a nadie. */
 export function parseRequest(body: unknown): ParsedRequest {
@@ -59,11 +66,18 @@ export function parseRequest(body: unknown): ParsedRequest {
   const mode = str(stage.mode) ?? str(params.mode);
   const brandId = str(body.brandId);
   if (!brandId) throw new LabError(400, 'INVALID_REQUEST', 'falta brandId');
-  if (mode !== 'voice' && mode !== 'music') throw new LabError(400, 'INVALID_REQUEST', "stage.mode debe ser 'voice' o 'music'");
+  if (mode !== 'voice' && mode !== 'music' && mode !== 'sound') throw new LabError(400, 'INVALID_REQUEST', "stage.mode debe ser 'voice', 'music' o 'sound'");
   const parentJobId = body.parent_job_id == null ? null : (isUuid(body.parent_job_id) ? body.parent_job_id : null);
   if (body.parent_job_id != null && !parentJobId) throw new LabError(400, 'INVALID_REQUEST', 'parent_job_id no es un uuid');
   const ledgerByCaller = body.ledger_by_caller === true;
   const format = str(params.format);
+
+  if (mode === 'sound') {
+    const sounds = Array.isArray(params.sounds) ? [...new Set(params.sounds)] : null;
+    if (!sounds || !sounds.length || sounds.length > SOUND_MAX_KEYS) throw new LabError(400, 'INVALID_REQUEST', `params.sounds debe ser una lista de 1 a ${SOUND_MAX_KEYS} claves`);
+    for (const k of sounds) if (typeof k !== 'string' || !/^(sfx|bed)_[a-z0-9_]{2,60}$/.test(k)) throw new LabError(400, 'INVALID_REQUEST', `clave de sonido no válida: ${String(k).slice(0, 80)}`);
+    return { mode, brandId, sounds: sounds as string[], parentJobId, ledgerByCaller };
+  }
 
   if (mode === 'voice') {
     if (typeof params.script !== 'string' || !params.script.trim()) throw new LabError(400, 'INVALID_REQUEST', 'falta params.script');
@@ -364,6 +378,34 @@ async function runVoice(e: Env, r: VoiceRequest, jobId: string, t0: number) {
   };
 }
 
+/**
+ * Modo `sound`, la parte PURA: de las filas de la librería, el sonido de cada clave pedida. Una fila de la marca gana a
+ * la de sistema (`brand_id` NULL) con la misma clave. Falta una clave → 422 SOUND_NOT_FOUND con todas las que faltan.
+ */
+export function soundsFromRows(rows: any[], keys: string[], brandId: string, baseUrl: string) {
+  const pick = new Map<string, any>();
+  for (const r of rows ?? []) {
+    if (!r || r.active === false || !keys.includes(r.sound_key)) continue;
+    if (r.brand_id != null && r.brand_id !== brandId) continue;
+    const prev = pick.get(r.sound_key);
+    if (!prev || (prev.brand_id == null && r.brand_id != null)) pick.set(r.sound_key, r);
+  }
+  const missing = keys.filter((k) => !pick.has(k));
+  if (missing.length) throw new LabError(422, 'SOUND_NOT_FOUND', `la librería no tiene: ${missing.join(', ')}`);
+  return keys.map((k) => {
+    const r = pick.get(k);
+    return { key: k, fn: r.fn, url: `${baseUrl}/storage/v1/object/public/${STORAGE_BUCKET}/${r.storage_path}`, storage_path: r.storage_path,
+      sha256: r.sha256, duration_ms: r.duration_ms, loudness_lufs: r.loudness_lufs ?? null, license: r.license, attribution: r.attribution ?? null };
+  });
+}
+
+/** Modo `sound`: lee la librería propia. Sin proveedor y sin costo: la librería es nuestra (licencia `propia`). */
+async function runSound(e: Env, r: SoundRequest, jobId: string, t0: number) {
+  const rows = await db(e, `voicelab_sound_library?sound_key=in.(${r.sounds.map(q).join(',')})&active=is.true&or=(brand_id.is.null,brand_id.eq.${q(r.brandId)})&select=sound_key,fn,storage_path,sha256,duration_ms,loudness_lufs,license,attribution,brand_id,active`);
+  const sounds = soundsFromRows(rows ?? [], r.sounds, r.brandId, e.url);
+  return { success: true, job_id: jobId, mode: 'sound', sounds, cost_usd: 0, ledger_id: null, duration_ms: Date.now() - t0 };
+}
+
 async function runMusic(e: Env, r: MusicRequest, jobId: string, t0: number) {
   const presetFilter = r.preset ? `&name=eq.${q(r.preset)}` : '';
   const preset = (await db(e, `voicelab_music_presets?brand_id=eq.${q(r.brandId)}&active=is.true${presetFilter}&select=*&order=created_at.asc&limit=1`))?.[0];
@@ -438,11 +480,11 @@ export default async function handler(req: any, res: any) {
       method: 'POST', headers: { Prefer: 'return=representation' },
       body: JSON.stringify({ lab: LAB, brand_id: r.brandId, job_type: r.mode, status: 'processing', payload: body,
         parent_job_id: r.parentJobId, claimed_at: new Date().toISOString(), created_by: LAB,
-        language: r.mode === 'voice' ? r.language : null }),
+        language: r.mode === 'voice' ? (r as VoiceRequest).language : null }),
     });
     jobId = created?.[0]?.id ?? null;
     if (!jobId) throw new LabError(502, 'DB_ERROR', 'lab_jobs no devolvió id');
-    const result = r.mode === 'voice' ? await runVoice(e, r, jobId, t0) : await runMusic(e, r, jobId, t0);
+    const result = r.mode === 'voice' ? await runVoice(e, r, jobId, t0) : r.mode === 'sound' ? await runSound(e, r, jobId, t0) : await runMusic(e, r, jobId, t0);
     await db(e, `lab_jobs?id=eq.${jobId}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' },
       body: JSON.stringify({ status: 'completed', output_parsed: result, completed_at: new Date().toISOString() }) });
     return res.status(200).json(result);
