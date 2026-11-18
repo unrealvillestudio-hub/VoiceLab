@@ -1,4 +1,8 @@
-# VoiceLab — contrato del lab (v1.2, 2026-11-17; base v1 del 2026-11-07)
+# VoiceLab — contrato del lab (v1.3, 2026-11-18; base v1 del 2026-11-07)
+
+> **v1.3 (2026-11-18, decisión de Sam).** En `mode: "voice"`, `params.language` deja de ser obligatorio: sin él, VoiceLab
+> usa `voicelab_params.language` de la voz de la persona, que es dato por marca (§2). La respuesta suma `language`, el
+> idioma usado (§4). Las llamadas que ya mandan `language` no cambian.
 
 > **v1.2 (2026-11-17).** Lectura nueva `GET /api/sound-library` (§3 ter): la librería completa que ve una marca, para la
 > ventana de Controles de Sonido («acceso a librería», decisión de Sam del 2026-11-17). Sólo lectura, sin costo.
@@ -46,7 +50,7 @@ VoiceLab es dueño de su motor (ElevenLabs hoy). Quien lo usa (el carril, VideoL
 | Campo | Tipo | Obligatorio | Nota |
 |---|---|---|---|
 | `script` | string | sí | texto final a locutar, **literal**: VoiceLab no lo reescribe ni lo recorta; si excede el límite del modelo, falla con `SCRIPT_TOO_LONG` |
-| `language` | string BCP-47 (`es-PA`, `en-US`, …) | sí | |
+| `language` | string BCP-47 (`es-PA`, `en-US`, …) | no (v1.3) | por defecto `voicelab_params.language` de la voz, que es dato por marca: una misma persona puede hablar un idioma en una marca y otro en otra. Sin ninguno de los dos → `400 INVALID_REQUEST`. La respuesta devuelve el idioma usado en `language` |
 | `person_id` | uuid de `person_blueprints` | uno de los dos | la voz se resuelve por `person_blueprints.voicelab_ref` → `voicelab_params` |
 | `voice_ref` | uuid de `voicelab_params` | uno de los dos | explícito; se valida contra la misma regla de consentimiento |
 | `preset` | string | no | variante de estilo de esa voz; por defecto la fila activa |
@@ -124,6 +128,7 @@ GET /api/sound-library?brandId=<marca>[&fn=<función>]
   "audio_url": "https://…/storage/v1/object/public/unrlvl-media/voicelab/<brand_id>/<job_id>.mp3",
   "storage_path": "voicelab/<brand_id>/<job_id>.mp3",
   "format": "mp3_44100_128",
+  "language": "es-PA",
   "duration_ms": 31840,
   "alignment": { "words": [ { "text": "Hola", "start_ms": 0, "end_ms": 310 } ] },
   "voice": { "voice_ref": "uuid", "voice_id": "…", "person_id": "uuid", "kind": "clone|synthetic", "consent_ref": "uuid|null" },

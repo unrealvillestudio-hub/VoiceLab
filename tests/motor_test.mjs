@@ -286,6 +286,40 @@ test('una voz con modelo propio (voicelab_params.model_id) lo usa y exige su tar
   assert.equal(r.log.provider[0].body.model_id, 'modelo-voz-dato');
 });
 
+// ── Idioma por dato (v1.3, 2026-11-18): sin params.language manda el de la voz ─────────────────────
+test('idioma: sin params.language usa voicelab_params.language de la voz y lo devuelve', async () => {
+  const w = world();
+  w.voicelab_params[0] = { ...w.voicelab_params[0], language: 'es-PA' };
+  const r = await call(voice({ script: 'hola', person_id: U(1) }), { w });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.equal(r.log.provider[0].body.language_code, 'es'); assert.equal(r.json.language, 'es-PA');
+});
+test('idioma: el de la petición manda sobre el de la voz (una persona, otra marca, otro idioma)', async () => {
+  const w = world();
+  w.voicelab_params[0] = { ...w.voicelab_params[0], language: 'es' };
+  const r = await call(voice({ script: 'hello', language: 'en-US', person_id: U(1) }), { w });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.equal(r.log.provider[0].body.language_code, 'en'); assert.equal(r.json.language, 'en-US');
+});
+test('idioma: ni en la petición ni en la voz (o mal formado) → 400 sin llamar al proveedor', async () => {
+  const w = world();
+  w.voicelab_params.push({ id: U(18), voice_id: 'vid-sin-idioma', voice_kind: 'synthetic' });
+  w.voicelab_params.push({ id: U(19), voice_id: 'vid-idioma-roto', voice_kind: 'synthetic', language: 'Español' });
+  for (const ref of [U(18), U(19)]) {
+    const r = await call(voice({ script: 'hola', voice_ref: ref }), { w });
+    assert.equal(r.status, 400, JSON.stringify(r.json)); assert.equal(r.json.error_label, 'INVALID_REQUEST');
+    assert.equal(r.log.provider.length, 0);
+  }
+  const bad = await call(voice({ script: 'hola', language: 'Español', person_id: U(1) }));
+  assert.equal(bad.status, 400); assert.equal(bad.log.provider.length, 0);
+});
+test('languageFor es puro y falla cerrado', () => {
+  assert.equal(M.languageFor('en-US', { language: 'es' }), 'en-US');
+  assert.equal(M.languageFor(null, { language: 'es' }), 'es');
+  assert.throws(() => M.languageFor(null, {}), /sin idioma/);
+  assert.throws(() => M.languageFor(null, null), /sin idioma/);
+});
+
 // ── Puros ────────────────────────────────────────────────────────────────────────────────────────
 test('mp3DurationMs mide tramas y salta ID3', () => {
   assert.equal(M.mp3DurationMs(mp3(100)), 2612);
