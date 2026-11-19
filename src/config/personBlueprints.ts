@@ -234,35 +234,6 @@ export const PERSON_BLUEPRINTS: PersonBlueprint[] = [
     compatible_archetypes: ["studio_setup","street_interview","salon_workshop","single_talking_head"]
   },
   {
-    id: "dd_host_01",
-    brandId: "DiamondDetails",
-    displayName: "Host Diamond Details A",
-    role_default: "BOTH",
-    status: "active",
-    imagelab: {
-      description: "Hombre profesional 30-40 años, aspecto cuidado, ropa casual premium en tonos oscuros, actitud experta y cercana.",
-      style: "cinematic_soft, moody garage lighting, automotive premium",
-      realism_level: "cinematic",
-      skin_detail: "subtle",
-      film_look: "cinematic_soft",
-      lens_preset: "35mm_hero",
-      depth_of_field: "shallow",
-      has_reference_photos: false,
-      reference_photos_path: "Reference_Assets/Diamond_Details/"
-    },
-    voicelab: {
-      voice_id: "TBD_dd_voice_01",
-      language: "es-ES",
-      emotion_base: "authoritative",
-      speed: 1.0,
-      script_style: "spot",
-      speaking_style: "Experto técnico pero cercano. Usa términos del sector con naturalidad."
-    },
-    expertise: "detailing automotriz, protección cerámica, PPF, tintado de lunas",
-    compliance_notes: "No absolute guarantees. No readable plates.",
-    compatible_archetypes: ["studio_setup","car_front","car_rear","street_interview","salon_workshop","single_talking_head"]
-  },
-  {
     id: "vizos_host_01",
     brandId: "VizosCosmetics",
     displayName: "Host Vizos Cosmetics",

@@ -95,46 +95,6 @@ export const LOCATION_BLUEPRINTS: LocationBlueprint[] = [
     recommended_angles: ["arquitectura_fondo","walking_calle","mural_wynwood","reflejo_cristal","rooftop_skyline"]
   },
   {
-    id: "loc_dd_cabinas",
-    brandId: "DiamondDetails",
-    displayName: "Cabinas Diamond Details — Alicante",
-    locationType: "workshop",
-    city: "Alicante", country: "España", status: "active",
-    visual: {
-      description: "Bahía de detailing profesional premium. Suelo epoxy gris claro, iluminación LED blanca de techo, coche en proceso como elemento central.",
-      materials: ["epoxy suelo","metal cromado","LED techo","equipamiento profesional"],
-      color_palette: ["gris claro","blanco LED","negro herramientas","plateado cromado"],
-      lighting: "LED blanca de techo alta intensidad, sin sombras duras",
-      time_of_day_best: "cualquiera (iluminación artificial controlada)",
-      signature_elements: ["coche en bahía","suelo epoxy","LED profesional","herramientas organizadas"]
-    },
-    has_reference_photos: false,
-    reference_photos_path: "Reference_Assets/Diamond_Details/",
-    imagelab: { realism_level: "cinematic", film_look: "cinematic_soft", lens_preset: "35mm_hero", depth_of_field: "shallow", framing: "negative_space_right" },
-    compatible_archetypes: ["salon_workshop","single_talking_head","studio_setup"],
-    recommended_angles: ["wide_bahia_coche","detalle_led_carroceria","tecnico_aplicando","top_down_bahia","entrada_taller"]
-  },
-  {
-    id: "loc_dd_costa_blanca",
-    brandId: "DiamondDetails",
-    displayName: "Costa Blanca — Alicante",
-    locationType: "exterior_coastal",
-    city: "Alicante", country: "España", status: "active",
-    visual: {
-      description: "Costa mediterránea alicantina. Arquitectura blanca, mar azul intenso Mediterráneo, luz mediterránea brillante y cálida.",
-      materials: ["asfalto","piedra mediterránea","arena","vegetación mediterránea"],
-      color_palette: ["azul mediterráneo","blanco arquitectura","verde palmera","ocre piedra"],
-      lighting: "luz mediterránea intensa, dorada al atardecer",
-      time_of_day_best: "atardecer",
-      signature_elements: ["mar Mediterráneo","arquitectura blanca","palmeras","carretera costera"]
-    },
-    has_reference_photos: false,
-    reference_photos_path: "Reference_Assets/Diamond_Details/",
-    imagelab: { realism_level: "cinematic", film_look: "cinematic_soft", lens_preset: "35mm_hero", depth_of_field: "medium", framing: "rule_of_thirds" },
-    compatible_archetypes: ["car_front","car_rear","street_interview","single_talking_head"],
-    recommended_angles: ["coche_mar_fondo","carretera_costera_palmeras","wide_paisaje_costero","reflejo_mar_carroceria"]
-  },
-  {
     id: "loc_generic_event_stage",
     brandId: "GENERIC",
     displayName: "Event Stage / Tarima Conferencia",
