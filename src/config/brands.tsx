@@ -37,15 +37,6 @@ export const BRANDS: BrandProfile[] = [
     defaultNegativePrompt: "extra fingers, text, watermark, messy background"
   },
   {
-    id: "DiamondDetails",
-    displayName: "Diamond Details",
-    industry: "automotive_detailing",
-    requiresProductLock: true,
-    visualIdentity: "High-tech garage, neon rim lights, carbon fiber accents, wet floor reflections.",
-    complianceRules: "Show technical precision.",
-    defaultNegativePrompt: "dirty cars, rust, text, low lighting"
-  },
-  {
     id: "VizosCosmetics",
     displayName: "Vizos Cosmetics",
     industry: "high-end_beauty",

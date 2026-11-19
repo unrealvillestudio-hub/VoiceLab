@@ -1,15 +1,6 @@
 import { VoicePersona } from '../core/types';
 
 export const VOICE_PERSONAS: Record<string, VoicePersona> = {
-  DiamondDetails: {
-    id: 'vp_diamond',
-    label: 'Diamond Details - Executive',
-    brandId: 'DiamondDetails',
-    language: 'es-ES',
-    voiceId: 'TBD_dd_voice_01',
-    emotion: 'authoritative',
-    speed: 1.0
-  },
   D7Herbal: {
     id: 'vp_d7herbal',
     label: 'D7Herbal - Natural',
