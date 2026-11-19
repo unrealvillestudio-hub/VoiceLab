@@ -320,6 +320,27 @@ test('languageFor es puro y falla cerrado', () => {
   assert.throws(() => M.languageFor(null, null), /sin idioma/);
 });
 
+// ── Formato que acepta el proveedor (2026-11-19): 'mp3_192' de una fila antigua dio 403 en ElevenLabs ────
+test('formato: el de una fila antigua que el proveedor rechaza cae al de por defecto y no llega mal al proveedor', async () => {
+  const w = world();
+  w.voicelab_params[0] = { ...w.voicelab_params[0], format_default: 'mp3_192' };
+  const r = await call(voice({ script: 'hola', language: 'es', person_id: U(1) }), { w });
+  assert.equal(r.status, 200, JSON.stringify(r.json));
+  assert.match(r.log.provider[0].url, /output_format=mp3_44100_128/); assert.equal(r.json.format, 'mp3_44100_128');
+});
+test('formato: uno pedido que el proveedor no acepta → 400 sin llamar al proveedor', async () => {
+  const r = await call(voice({ script: 'hola', language: 'es', person_id: U(1), format: 'mp3_320' }));
+  assert.equal(r.status, 400); assert.equal(r.json.error_label, 'INVALID_REQUEST'); assert.equal(r.log.provider.length, 0);
+});
+test('formatFor e isProviderFormat son puros', () => {
+  assert.equal(M.isProviderFormat('mp3_44100_128'), true); assert.equal(M.isProviderFormat('pcm_16000'), true);
+  assert.equal(M.isProviderFormat('mp3_192'), false); assert.equal(M.isProviderFormat('mp3_320'), false);
+  assert.deepEqual(M.formatFor(null, 'mp3_192'), { format: 'mp3_44100_128', fallback: true });
+  assert.deepEqual(M.formatFor(null, null), { format: 'mp3_44100_128', fallback: false });
+  assert.deepEqual(M.formatFor('mp3_44100_192', 'mp3_192'), { format: 'mp3_44100_192', fallback: false });
+  assert.throws(() => M.formatFor('mp3_192', null), /no lo acepta/);
+});
+
 // ── Puros ────────────────────────────────────────────────────────────────────────────────────────
 test('mp3DurationMs mide tramas y salta ID3', () => {
   assert.equal(M.mp3DurationMs(mp3(100)), 2612);

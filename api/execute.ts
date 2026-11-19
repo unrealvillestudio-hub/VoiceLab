@@ -215,6 +215,22 @@ export const costOf = (units: number, rateUsd: number) => Math.round(units * rat
 export const storagePath = (brandId: string, jobId: string, ext = 'mp3') =>
   `${STORAGE_PREFIX}/${brandId.replace(/[^A-Za-z0-9_-]/g, '_')}/${jobId}.${ext}`;
 
+/**
+ * Formato de salida que el proveedor acepta: mp3_<frecuencia>_<kbps>, pcm_<frecuencia> o wav_<frecuencia>.
+ * Un formato pedido que no lo cumple es 400 (nunca llega al proveedor). Uno de la fila de voz que no lo cumple
+ * —dato antiguo, p. ej. 'mp3_192'— cae al formato por defecto y lo dice (`fallback`): el proveedor lo rechazaría.
+ */
+export const isProviderFormat = (f: unknown): f is string =>
+  typeof f === 'string' && /^(mp3_(8000|16000|22050|24000|44100)_\d{2,3}|pcm_\d{4,5}|wav_\d{4,5})$/.test(f);
+export function formatFor(requested: string | null, rowFormat: unknown): { format: string; fallback: boolean } {
+  if (requested) {
+    if (!isProviderFormat(requested)) throw new LabError(400, 'INVALID_REQUEST', `params.format no lo acepta el proveedor: ${requested}`);
+    return { format: requested, fallback: false };
+  }
+  if (rowFormat == null) return { format: DEFAULT_FORMAT, fallback: false };
+  return isProviderFormat(rowFormat) ? { format: rowFormat, fallback: false } : { format: DEFAULT_FORMAT, fallback: true };
+}
+
 export const extFor = (format: string) => (format.startsWith('pcm') || format.startsWith('wav') ? 'wav' : 'mp3');
 export const mimeFor = (ext: string) => (ext === 'wav' ? 'audio/wav' : 'audio/mpeg');
 
@@ -355,8 +371,8 @@ async function runVoice(e: Env, r: VoiceRequest, jobId: string, t0: number) {
   if (!scriptFits(r.script, model.generation_params)) throw new LabError(400, 'SCRIPT_TOO_LONG', `el guion excede el límite de ${model.model_id}`);
 
   // 4 · Proveedor
-  const format = r.format ?? vp.format_default ?? DEFAULT_FORMAT;
-  const fmt = /^(mp3|pcm|wav)_/.test(format) ? format : DEFAULT_FORMAT;
+  const { format: fmt, fallback } = formatFor(r.format, vp.format_default);
+  if (fallback) console.warn(`[VoiceLab] FORMAT_FALLBACK voz=${vp.id}: format_default «${vp.format_default}» no lo acepta el proveedor; se usa ${fmt}`);
   const language = languageFor(r.language, vp);
   const lang = language.split('-')[0].toLowerCase();
   let out: any;
