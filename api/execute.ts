@@ -43,7 +43,7 @@ const isUuid = (v: unknown): v is string =>
 const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
 
 export interface VoiceRequest {
-  mode: 'voice'; brandId: string; script: string; language: string;
+  mode: 'voice'; brandId: string; script: string; language: string | null;
   personId: string | null; voiceRef: string | null; preset: string | null; format: string | null;
   parentJobId: string | null; ledgerByCaller: boolean;
 }
@@ -81,8 +81,9 @@ export function parseRequest(body: unknown): ParsedRequest {
 
   if (mode === 'voice') {
     if (typeof params.script !== 'string' || !params.script.trim()) throw new LabError(400, 'INVALID_REQUEST', 'falta params.script');
+    // El idioma es opcional: sin él, manda el de la voz (voicelab_params.language), que es dato por marca.
     const language = str(params.language);
-    if (!language || !/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(language)) throw new LabError(400, 'INVALID_REQUEST', 'params.language debe ser BCP-47');
+    if (language && !isBcp47(language)) throw new LabError(400, 'INVALID_REQUEST', 'params.language debe ser BCP-47');
     const personId = params.person_id == null ? null : params.person_id;
     const voiceRef = params.voice_ref == null ? null : params.voice_ref;
     if (personId != null && !isUuid(personId)) throw new LabError(400, 'INVALID_REQUEST', 'params.person_id no es un uuid');
@@ -113,6 +114,20 @@ export function consentDecision(
   if (voiceKind !== 'clone') return { ok: false, label: 'VOICE_NOT_ASSIGNED' };
   const vigente = consents.find(c => c.scope === 'voice' && c.authorized === true && !c.revoked_at);
   return vigente ? { ok: true, consentRef: vigente.id } : { ok: false, label: 'VOICE_NOT_AUTHORIZED' };
+}
+
+const isBcp47 = (v: string): boolean => /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(v);
+
+/**
+ * Idioma de la locución: el de la petición si viene; si no, el de la voz (voicelab_params.language).
+ * Cada fila de voz pertenece a una marca, así que una misma persona puede hablar un idioma en una marca y otro en otra.
+ * Sin ninguno de los dos (o con un dato que no es BCP-47) falla cerrado: nunca se adivina.
+ */
+export function languageFor(requested: string | null, voiceRow: Record<string, any> | null | undefined): string {
+  if (requested) return requested;
+  const fromVoice = str(voiceRow?.language);
+  if (fromVoice && isBcp47(fromVoice)) return fromVoice;
+  throw new LabError(400, 'INVALID_REQUEST', 'sin idioma: ni params.language ni voicelab_params.language de la voz');
 }
 
 /** Una voz está asignada si tiene id de proveedor real (no el marcador TBD de la siembra antigua). */
@@ -342,7 +357,8 @@ async function runVoice(e: Env, r: VoiceRequest, jobId: string, t0: number) {
   // 4 · Proveedor
   const format = r.format ?? vp.format_default ?? DEFAULT_FORMAT;
   const fmt = /^(mp3|pcm|wav)_/.test(format) ? format : DEFAULT_FORMAT;
-  const lang = r.language.split('-')[0].toLowerCase();
+  const language = languageFor(r.language, vp);
+  const lang = language.split('-')[0].toLowerCase();
   let out: any;
   try {
     const res = await provider(e, `/v1/text-to-speech/${encodeURIComponent(vp.voice_id)}/with-timestamps?output_format=${q(fmt)}`, {
@@ -371,7 +387,7 @@ async function runVoice(e: Env, r: VoiceRequest, jobId: string, t0: number) {
     status: 'success', durationMs: Date.now() - t0, voiceId: vp.voice_id,
   });
   return {
-    success: true, job_id: jobId, mode: 'voice', audio_url: audioUrl, storage_path: path, format: fmt,
+    success: true, job_id: jobId, mode: 'voice', audio_url: audioUrl, storage_path: path, format: fmt, language,
     duration_ms: durationMs, alignment: { words: wordsFromAlignment(out?.alignment) },
     voice: { voice_ref: vp.id, voice_id: vp.voice_id, person_id: r.personId, kind: vp.voice_kind, consent_ref: c.consentRef },
     music: null, model_id: model.model_id, cost_usd: costOf(units, rate.rate), ledger_id: ledgerId,
@@ -486,7 +502,8 @@ export default async function handler(req: any, res: any) {
     if (!jobId) throw new LabError(502, 'DB_ERROR', 'lab_jobs no devolvió id');
     const result = r.mode === 'voice' ? await runVoice(e, r, jobId, t0) : r.mode === 'sound' ? await runSound(e, r, jobId, t0) : await runMusic(e, r, jobId, t0);
     await db(e, `lab_jobs?id=eq.${jobId}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' },
-      body: JSON.stringify({ status: 'completed', output_parsed: result, completed_at: new Date().toISOString() }) });
+      body: JSON.stringify({ status: 'completed', output_parsed: result, completed_at: new Date().toISOString(),
+        ...(r.mode === 'voice' ? { language: (result as any).language } : {}) }) });
     return res.status(200).json(result);
   } catch (err) {
     const le = err instanceof LabError ? err : new LabError(500, 'INTERNAL_ERROR', (err as Error)?.message ?? String(err));
